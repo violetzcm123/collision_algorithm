@@ -194,6 +194,41 @@ namespace UnityNativeHull
             //获取指针
             hull.Vertices=(float3*)hull.VerticesNative.GetUnsafePtr();
             
+            // 设置面数量
+            hull.FaceCount=def.FaceCount;
+            // 创建面数组，存储所有 NativeFace 结构
+            hull.FacesNative=new NativeArrayNoLeakDetection<NativeFace>(hull.FaceCount, Allocator.Temp);
+            hull.Faces=(NativeFace*)hull.FacesNative.GetUnsafePtr();
+            
+            // 初始化所有面，将其起始边索引 Edge 设置为 -1（表示尚未关联边）
+            for (int i = 0; i < def.FaceCount; i++)
+            {
+                NativeFace* f = hull.Faces + i;
+                f->Edge = -1;
+            }
+            
+            // 为所有面生成平面方程（法线 + 偏移量）
+            CreateFacesPlanes(ref hull, ref def);
+            
+            // 创建边映射表，用于查找边对的共享关系
+            var edgeMap=new Dictionary<(int v1, int v2), int>();
+            // 创建一个临时的半边列表（最大容量预设为 10000）
+            var edgesList = new NativeHalfEdge[10000]; // 临时边列表
+
+            for (int i = 0; i < def.FaceCount; i++)
+            {
+                NativeFaceDef face = def.FacesNative[i];
+                int vertCount=face.VertexCount;
+                
+                Debug.Assert(vertCount >= 3); // 面必须至少由3个点构成
+                
+                int* vertices=face.Vertices;
+                
+                //当前面包含的所有半边索引列表
+                var faceHalfEdges = new List<int>();
+                
+                
+            }
         }
         // 按法线分组
         public static Dictionary<float3, List<DetailedFaceDef>> GroupByNormal(IList<DetailedFaceDef> data)
