@@ -131,11 +131,11 @@ namespace UnityNativeHull
                 });
             }
 
-            foreach (var orphanIdx in orphanIndices.OrderByDescending(i=>i))
+            foreach (var orphanIdx in orphanIndices.OrderByDescending(i => i))
             {
                 // 删除孤立顶点
                 uniqueVerts.RemoveAt(orphanIdx);
-                
+
                 // 修正面中顶点索引，只修正那些 使用了索引大于或等于 orphanIdx 的面，因为小于它的索引不受影响，
                 foreach (var face in faceDefs.Where(f => f.HighestIndex >= orphanIdx))
                 {
@@ -150,9 +150,10 @@ namespace UnityNativeHull
                     }
                 }
             }
+
             // 创建一个空的 NativeHull 结构体，用于存放结果
             var result = new NativeHull();
-            
+
             // 使用临时原生数组（NativeArray）存放面和顶点数据，方便后续调用本地方法构建凸包
             // Allocator.Temp就是告诉Unity，我要分配一段临时使用的原生内存，在这一帧内使用完就释放
             using (var faceNative = new NativeArray<NativeFaceDef>(faceDefs.ToArray(), Allocator.Temp))
@@ -181,53 +182,221 @@ namespace UnityNativeHull
             //面数和顶点数必须大于0，确保数据合法
             Debug.Assert(def.FaceCount > 0);
             Debug.Assert(def.VertexCount > 0);
-            
+
             //设置顶点数量
-            hull.VertexCount=def.VertexCount;
+            hull.VertexCount = def.VertexCount;
 
             // 将原生顶点数组转换为普通托管数组
             var arr = def.VerticesNative.ToArray();
-            
+
             // 将顶点数据复制到 Persistent 分配的 NativeArray 中（长期保留）
-            hull.VerticesNative=new NativeArrayNoLeakDetection<float3>(arr, Allocator.Temp);
-            
+            hull.VerticesNative = new NativeArrayNoLeakDetection<float3>(arr, Allocator.Temp);
+
             //获取指针
-            hull.Vertices=(float3*)hull.VerticesNative.GetUnsafePtr();
-            
+            hull.Vertices = (float3*)hull.VerticesNative.GetUnsafePtr();
+
             // 设置面数量
-            hull.FaceCount=def.FaceCount;
+            hull.FaceCount = def.FaceCount;
             // 创建面数组，存储所有 NativeFace 结构
-            hull.FacesNative=new NativeArrayNoLeakDetection<NativeFace>(hull.FaceCount, Allocator.Temp);
-            hull.Faces=(NativeFace*)hull.FacesNative.GetUnsafePtr();
-            
+            hull.FacesNative = new NativeArrayNoLeakDetection<NativeFace>(hull.FaceCount, Allocator.Temp);
+            hull.Faces = (NativeFace*)hull.FacesNative.GetUnsafePtr();
+
             // 初始化所有面，将其起始边索引 Edge 设置为 -1（表示尚未关联边）
             for (int i = 0; i < def.FaceCount; i++)
             {
                 NativeFace* f = hull.Faces + i;
                 f->Edge = -1;
             }
-            
+
             // 为所有面生成平面方程（法线 + 偏移量）
             CreateFacesPlanes(ref hull, ref def);
-            
+
             // 创建边映射表，用于查找边对的共享关系
-            var edgeMap=new Dictionary<(int v1, int v2), int>();
+            var edgeMap = new Dictionary<(int v1, int v2), int>();
             // 创建一个临时的半边列表（最大容量预设为 10000）
             var edgesList = new NativeHalfEdge[10000]; // 临时边列表
 
             for (int i = 0; i < def.FaceCount; i++)
             {
                 NativeFaceDef face = def.FacesNative[i];
-                int vertCount=face.VertexCount;
-                
+                int vertCount = face.VertexCount;
+
                 Debug.Assert(vertCount >= 3); // 面必须至少由3个点构成
-                
-                int* vertices=face.Vertices;
-                
+
+                int* vertices = face.Vertices;
+
                 //当前面包含的所有半边索引列表
                 var faceHalfEdges = new List<int>();
+
+                // 遍历当前面上的每一条边（按顺序组成环）
+                for (int j = 0; j < vertCount; j++)
+                {
+                    int v1 = vertices[j];
+                    int v2 = j + 1 < vertCount ? vertices[j + 1] : vertices[0]; // 环回头
+
+                    //检查边是否存在（顺序正向）
+                    bool edgeFound12 = edgeMap.TryGetValue((v1, v2), out int iter12);
+                    //检查反向
+                    bool edgeFound21 = edgeMap.ContainsKey((v2, v1));
+
+                    //正向存在与反向存在必须同步（对称性校验）
+                    Debug.Assert(edgeFound12 == edgeFound21);
+
+                    if (edgeFound12)
+                    {
+                        // 如果边已存在，说明这是另一面的共享边
+                        int e12 = iter12;
+
+                        // 如果边还没有绑定过面，则绑定当前面
+                        if (edgesList[e12].Face == -1)
+                        {
+                            edgesList[e12].Face = i;
+                        }
+                        else
+                        {
+                            // 如果边已经绑定了面，则说明两个面试图共享方向相同的边，错误！
+                            throw new Exception("两个共享边不能有相同顺序的相同顶点");
+                        }
+
+                        // 如果当前面尚未绑定主边，则绑定
+                        if (hull.Faces[i].Edge == -1)
+                        {
+                            hull.Faces[i].Edge = e12;
+                        }
+
+                        // 添加这条边索引到当前面的半边序列中
+                        faceHalfEdges.Add(e12);
+                    }
+                    else
+                    {
+                        // 边不存在，需要新建一对半边 e12、e21（双向）
+                        int e12 = hull.EdgeCount++;
+                        int e21 = hull.EdgeCount++;
+
+                        // 设置当前面的主边索引
+                        if (hull.Faces[i].Edge == -1)
+                        {
+                            hull.Faces[i].Edge = e12;
+                        }
+
+                        faceHalfEdges.Add(e12);
+
+                        // 初始化 e12（v1 → v2）
+                        edgesList[e12].Prev = -1;
+                        edgesList[e12].Next = -1;
+                        edgesList[e12].Twin = e21;
+                        edgesList[e12].Face = i;
+                        edgesList[e12].Origin = v1;
+
+                        // 初始化 e21（v2 → v1）
+                        edgesList[e21].Prev = -1;
+                        edgesList[e21].Next = -1;
+                        edgesList[e21].Twin = e12;
+                        edgesList[e21].Face = -1;
+                        edgesList[e21].Origin = v2;
+
+                        // 添加到边映射表，便于查重和匹配
+                        edgeMap[(v1, v2)] = e12;
+                        edgeMap[(v2, v1)] = e21;
+                    }
+                }
                 
+                // 连接当前面的所有半边，使其形成闭环
+                for (int j = 0; j < faceHalfEdges.Count; j++)
+                {
+                    int e1=faceHalfEdges[j];
+                    int e2=j + 1< faceHalfEdges.Count ? faceHalfEdges[j + 1] : faceHalfEdges[0];
+                    
+                    edgesList[e1].Next =e2 ;
+                    edgesList[e2].Prev =e1;
+                }
+            }
+            
+            // 创建最终的边原生数组，大小为 EdgeCount，分配到 Persistent 内存中
+            hull.EdgesNative=new  NativeArrayNoLeakDetection<NativeHalfEdge>(hull.EdgeCount, Allocator.Persistent);
+
+            // 将临时边列表拷贝到 EdgesNative 中
+            for (int i = 0; i < hull.EdgeCount; i++)
+            {
+                hull.EdgesNative[i]=edgesList[i];
+            }
+            
+            // 获取底层原生指针
+            hull.Edges=(NativeHalfEdge*)hull.EdgesNative.GetUnsafePtr();
+        }
+
+        // 为每个面构建对应的平面方程（包含法线和偏移）
+        // 用于后续碰撞检测中的面裁剪、投影等操作
+        public unsafe static void CreateFacesPlanes(ref NativeHull hull, ref NativeHullDef def)
+        {
+            // 创建一个存储面平面的原生数组，大小为面数量，分配到 Persistent 内存中
+            hull.PlanesNative=new NativeArrayNoLeakDetection<NativePlane>(def.FaceCount, Allocator.Persistent);
+            // 获取底层原生指针
+            hull.Planes=(NativePlane*)hull.PlanesNative.GetUnsafePtr();
+
+            // 遍历每个面，计算其平面方程
+            for (int i = 0; i < def.FaceCount; i++)
+            {
+                NativeFaceDef face = def.FacesNative[i];
+                int vertCount = face.VertexCount;
                 
+                // 面必须至少由3个点构成
+                Debug.Assert(vertCount >= 3, "输入网格必须至少有3个顶点"); 
+                
+                //获取数组顶点
+                int* indices = face.Vertices;
+                
+                // 初始化法线和质心（中心点）
+                float3 normal = 0;
+                float3 center = 0;
+                
+                // 遍历面上的所有边（首尾相连）用于计算 Newell 法线
+                for (int j = 0; j < vertCount; j++)
+                {
+                    // 当前顶点索引
+                    int idx1 = indices[j];
+                    // 下一个顶点索引（环回）
+                    int idx2 = j + 1 < vertCount ? indices[j + 1] : indices[0];
+
+                    float3 v1;
+                    float3 v2;
+                    // 获取顶点坐标
+                    try
+                    {
+                        v1 = def.VerticesNative[idx1];
+                        v2 = def.VerticesNative[idx2];
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
+                        throw;
+                    }
+                    
+                    // 用 Newell 方法累加计算当前面法线
+                    normal+=Newell(v1, v2);
+                    // 累加质心（用于计算中心点）
+                    center += v1;
+                }
+                //平均化质心
+                center /= vertCount;
+                
+                // 归一化法线向量
+                var normalized = math.normalize(normal);
+                // 设置当前面的法线和偏移值
+                // plane.Normal：面法线
+                // plane.Offset：法线与中心点点积（也可理解为点到原点的距离）
+                hull.Planes[i].Normal = normalized;
+                hull.Planes[i].Offset = math.dot(normalized, center);
+                // 使用 Newell 方法计算多边形的法线向量
+                // 输入：一条边的两个顶点 a、b
+                float3 Newell(float3 a, float3 b)
+                {
+                    return new float3(
+                        (a.y - b.y) * (a.z + b.z), // x 分量
+                        (a.z - b.z) * (a.x + b.x), // y 分量
+                        (a.x - b.x) * (a.y + b.y)  // z 分量
+                    );
+                }
             }
         }
         // 按法线分组
@@ -296,7 +465,7 @@ namespace UnityNativeHull
             return result;
         }
 
-        // 顶点坐标舍入，保留小数点后3位就行了
+        // 顶点坐标舍入，保留小数点后3位
         public static float3 RoundVertex(Vector3 v)
         {
             return new float3(
@@ -342,20 +511,20 @@ namespace UnityNativeHull
                 for (int i = 0; i < OutsideEdges.Count; i++)
                 {
                     var edge = OutsideEdges[i];
-                    var nextIdx=i+1>OutsideEdges.Count-1?0:i+1;// 最后一个边指向第一个，闭环
-                    var next=OutsideEdges[nextIdx];
-                    
+                    var nextIdx = i + 1 > OutsideEdges.Count - 1 ? 0 : i + 1; // 最后一个边指向第一个，闭环
+                    var next = OutsideEdges[nextIdx];
+
                     // 如果当前边的终点不是下一个边的起点，说明边界不连续，需重构
                     if (edge.EndIndex != next.StartIndex)
                     {
                         return Rebuild(); // 尝试按连通方式重新排序边
                     }
                 }
-                
+
                 // 所有边已经按顺序闭合，直接返回
                 return OutsideEdges;
             }
-            
+
             // 添加一个边到外部边集合中（用于构建多边形的边界）
             // 如果该边的反向边已经存在，则说明这是一个内部边，将其从集合中移除。
             // 否则将其作为边界边添加进去。
@@ -372,34 +541,37 @@ namespace UnityNativeHull
                         return;
                     }
                 }
+
                 OutsideEdges.Add(new Edge { StartIndex = v1, EndIndex = v2 });
             }
-            
+
             // 重建边的顺序，使它们按连续顺序连接成一个闭合的轮廓边链
             private static List<Edge> Rebuild()
             {
                 var result = new List<Edge>();
-                
+
                 // 构建一个从起点索引到终点索引的映射字典
                 // 用于快速查找给定起点对应的终点（边的连接关系）
-                var map=OutsideEdges.ToDictionary(k=>k.StartIndex, v=>v.EndIndex);
-                
-                var cur=OutsideEdges.First().StartIndex;
-                
+                var map = OutsideEdges.ToDictionary(k => k.StartIndex, v => v.EndIndex);
+
+                var cur = OutsideEdges.First().StartIndex;
+
                 // 依次构造每一条边，使它们首尾相接
                 for (int i = 0; i < OutsideEdges.Count; i++)
                 {
-                    var edge = new Edge 
-                        { StartIndex = cur, // 当前边的起点
-                            EndIndex = map[cur]// 当前边的终点，从映射中查到
-                        };
-                    
+                    var edge = new Edge
+                    {
+                        StartIndex = cur, // 当前边的起点
+                        EndIndex = map[cur] // 当前边的终点，从映射中查到
+                    };
+
                     // 添加到结果集合中
                     result.Add(edge);
-                    
+
                     // 将当前终点设置为下一条边的起点，继续连边
-                    cur=edge.EndIndex;
+                    cur = edge.EndIndex;
                 }
+
                 // 返回重建后的、有序的边集合
                 return result;
             }
