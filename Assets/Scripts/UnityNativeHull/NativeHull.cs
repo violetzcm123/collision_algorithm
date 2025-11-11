@@ -45,7 +45,7 @@ namespace UnityNativeHull
         }
 
         // 判断该结构体是否有效（即已创建且未释放）
-        public bool isValid => IsCreated && !IsDisposed;
+        public bool IsValid => IsCreated && !IsDisposed;
 
         //释放内存
         public void Dispose()

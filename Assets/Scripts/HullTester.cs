@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityNativeHull;
 
@@ -11,10 +12,14 @@ using UnityEditor;
 public class HullTester:MonoBehaviour
 {
     public List<Transform> Transforms;
-    private Dictionary<int, TestShape> Hulls;// 凸包字典(键:实例ID,值:TestShape测试形状)
+    // 凸包绘制选项
+    public DebugHullFlags HullDrawingOptions = DebugHullFlags.Outline;  
+    // 凸包字典(键:实例ID,值:TestShape测试形状)
+    private Dictionary<int, TestShape> Hulls;
     private void Update()
     {
         HandleTransformChanged();//处理凸包变换
+        HandleHullCollisions();   // 处理凸包碰撞
     }
     // 处理变换变化
     public void HandleTransformChanged()
@@ -52,6 +57,24 @@ public class HullTester:MonoBehaviour
         Hulls=transforms.Where(t=>t!=null).ToDictionary(t=>t.GetInstanceID(),CreatShape);
     }
 
+    // 处理凸包碰撞
+    void HandleHullCollisions()
+    {
+        for (int i = 0; i < Transforms.Count; i++)
+        {
+            var t = Transforms[i];
+            if (t==null)
+                continue;
+            
+            //获取凸包信息
+            var hull1=Hulls[t.GetInstanceID()].Hull;
+            //RigidTransform是Unity.Mathematics下的高性能结构体，就是为了之后的变换速度快，只关心位置角度这些信息
+            var transform1=new RigidTransform(t.rotation,t.position);
+
+            HullDrawingUtility.DrawDebugHull(hull1, transform1,HullDrawingOptions);
+        }
+
+    }
     // 创建测试形状
     private TestShape CreatShape(Transform t)
     {
