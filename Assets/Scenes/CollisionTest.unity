@@ -340,7 +340,7 @@ MonoBehaviour:
   Transforms:
   - {fileID: 1034833144}
   - {fileID: 1614098446}
-  HullDrawingOptions: 12
+  HullDrawingOptions: 0
 --- !u!4 &727436106
 Transform:
   m_ObjectHideFlags: 0

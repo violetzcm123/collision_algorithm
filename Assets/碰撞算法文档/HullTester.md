@@ -126,7 +126,7 @@ end
 
 ---
 
-### CreateHull() — 调用 [[HullFactory]].CreateFromMesh
+### CreateHull() — 调用 [HullFactory.CreateFromMesh](./HullFactory.md)
 
 若 `Transform` 携带 `MeshCollider`（或其它可处理的碰撞体）：
 
