@@ -145,14 +145,13 @@ end
 
 - 遍历 `Transforms` 列表的每一对物体（i < j）；
     
-- 跳过未变化的 Transform（通过 `Transform.hasChanged` 优化）；
-    
 - 获取对应的 `NativeHull` 与 `RigidTransform`（position + rotation）；
     
 - 绘制每个凸包的调试信息（`HullDrawingUtility.DrawDebugHull`）；
+      
+- 跳过未变化的 Transform（通过 `Transform.hasChanged` 优化）；
     
 - 调用 `DrawHullCollision()` 来获取碰撞信息与绘制接触。
-    
 
 ---
 

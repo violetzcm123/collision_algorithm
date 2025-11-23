@@ -5,9 +5,9 @@
 
 ---
 
-## 概览流程图（Mermaid + click）
+## 流程图
 ```mermaid
-flowchart TD
+flowchart LR
 
 A["DrawDebugHull(hull, transform)"]
 B["DrawHullEdges(hull, transform)"]

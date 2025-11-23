@@ -62,19 +62,39 @@ public class HullTester:MonoBehaviour
     {
         for (int i = 0; i < Transforms.Count; i++)
         {
-            var t = Transforms[i];
-            if (t==null)
+            var t1 = Transforms[i];
+            if (1==null)
                 continue;
             
             //获取凸包信息
-            var hull1=Hulls[t.GetInstanceID()].Hull;
+            var hull1=Hulls[t1.GetInstanceID()].Hull;
             //RigidTransform是Unity.Mathematics下的高性能结构体，就是为了之后的变换速度快，只关心位置角度这些信息
-            var transform1=new RigidTransform(t.rotation,t.position);
+            var transform1=new RigidTransform(t1.rotation,t1.position);
 
             HullDrawingUtility.DrawDebugHull(hull1, transform1,HullDrawingOptions);
+            for (int j = i+1; j < Transforms.Count; j++)
+            {
+                var t2 = Transforms[j];
+                if (t2==null)
+                    continue;
+                if (!(t1.hasChanged && t2.hasChanged))
+                    continue;
+                
+                var hull2=Hulls[t2.GetInstanceID()].Hull;
+                var transform2=new RigidTransform(t2.rotation,t2.position);
+                //绘制碰撞信息
+                DrawHullCollision(t1.gameObject,hull1,transform1,t2.gameObject,hull2,transform2);
+            }
         }
 
     }
+    // 绘制凸包碰撞信息
+    public void DrawHullCollision(GameObject a, NativeHull h1, RigidTransform t1, GameObject b,
+        NativeHull h2, RigidTransform t2)
+    {
+        var collision=HullCollision.GetDebugCollisionInfo(t1,h1,t2,h2);
+    }
+
     // 创建测试形状
     private TestShape CreatShape(Transform t)
     {
