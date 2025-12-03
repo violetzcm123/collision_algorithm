@@ -4,7 +4,7 @@
 
 ---
 
-## 交互式流程图（Mermaid + click）
+## 流程图
 ```mermaid
 flowchart TD
 
@@ -57,7 +57,18 @@ click K "#DebugDrawManifold" "跳转到 DebugDrawManifold"
 - 对两个方向都进行裁剪（h2 的面裁剪 h1 与 h1 的面裁剪 h2），避免遗漏边／点特征；
     
 - 裁剪产生的多边形可能是空集、单点、线段或多顶点多边形；都需统一处理到接触点集合。
-    
+
+---
+
+### ClipFace
+
+**逻辑**
+
+1. 将凸包面变换到世界空间坐标系。
+
+2. 获取与h2中与h1最相对的那个面`ComputeIncidentFaceIndex(plane, transform2, hull2)`。
+
+3. 执行实际裁剪工作。
 
 ---
 

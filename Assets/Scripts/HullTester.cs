@@ -93,6 +93,10 @@ public class HullTester:MonoBehaviour
         NativeHull h2, RigidTransform t2)
     {
         var collision=HullCollision.GetDebugCollisionInfo(t1,h1,t2,h2);
+        if (collision.IsCollision)
+        {
+            HullIntersection.DrawNativeHullHullIntersection(t1,h1,t2,h2);
+        }
     }
 
     // 创建测试形状
