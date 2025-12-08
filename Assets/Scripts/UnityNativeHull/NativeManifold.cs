@@ -41,7 +41,7 @@ namespace UnityNativeHull
             });
         }
         // 添加一个接触点
-        public void Add(ContactPoint cp)
+        private void Add(ContactPoint cp)
         {
             if (_maxIndex >= MaxPoints)
                 return;
@@ -71,8 +71,12 @@ namespace UnityNativeHull
     public struct ContactID
     {
         // 接触点的ID，包含了一个FeaturePair和一个键值
-        public FeaturePair Feature;
+        public FeaturePair FeaturePair;
     }
+    /// <summary>
+    /// 多边形裁剪后生成的新点,不再是原 hull 的顶点,
+    /// 需要知道,这个点是由 hull 的哪条 edge 与哪个 clipping plane 相交产生的
+    /// </summary>
     public struct FeaturePair
     {
         public int InEdge1;// 来自形状1输入边

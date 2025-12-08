@@ -40,7 +40,7 @@ namespace UnityNativeHull
             result.IsCollision = result.Face1.Distance < 0 && result.Face2.Distance < 0 && result.Edge.Distance < 0;
             return result;
         }
-        public unsafe static void QueryFaceDistance(out FaceQueryResult result, RigidTransform t1, NativeHull h1, RigidTransform t2, NativeHull h2)
+        public static void QueryFaceDistance(out FaceQueryResult result, RigidTransform t1, NativeHull h1, RigidTransform t2, NativeHull h2)
         {
             // 在第二个体的局部空间中进行计算
             RigidTransform transform = math.mul(math.inverse(t2), t1);
@@ -62,7 +62,7 @@ namespace UnityNativeHull
                 }
             }
         }
-        public unsafe static void QueryEdgeDistance(out EdgeQueryResult result, RigidTransform t1, NativeHull h1, RigidTransform t2, NativeHull h2)
+        public static unsafe void QueryEdgeDistance(out EdgeQueryResult result, RigidTransform t1, NativeHull h1, RigidTransform t2, NativeHull h2)
         {
             // 在第二个体的局部空间中进行计算
             RigidTransform transform = math.mul(math.inverse(t2), t1);
