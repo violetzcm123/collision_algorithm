@@ -37,7 +37,7 @@ namespace UnityNativeHull
                 ClipFace(ref tmp, i, t2, hull2, t1, hull1);
 
                 // 将裁剪出的接触区域绘制出来（调试用）
-                //HullDrawingUtility.DebugDrawManifold(tmp);
+                HullDrawingUtility.DebugDrawManifold(tmp);
 
                 // 释放临时资源
                 tmp.Dispose();
@@ -52,7 +52,7 @@ namespace UnityNativeHull
                 ClipFace(ref tmp, i, t1, hull1, t2, hull2);
 
                 // 绘制结果
-                //HullDrawingUtility.DebugDrawManifold(tmp);
+                HullDrawingUtility.DebugDrawManifold(tmp);
 
                 tmp.Dispose();
             }
@@ -312,18 +312,18 @@ namespace UnityNativeHull
                 // 生成面接触信息，添加到碰撞结果中
                 if (faceQueryResult2.Distance>kRelFaceTolerance*faceQueryResult1.Distance+kAbsTolerance)
                 {
-                    CreateFaceContact(ref res, faceQueryResult2, t2, h2, t1, h1);
+                    CreateFaceContact(ref res, faceQueryResult2, t2, h2, t1, h1,false);
                 }
                 else
                 {
-                    CreateFaceContact(ref res, faceQueryResult1, t1, h1, t2, h2);
+                    CreateFaceContact(ref res, faceQueryResult1, t1, h1, t2, h2,false);
                 }
             }
             return true; // 碰撞检测通过，已生成接触信息
         }
         
         private unsafe static void CreateFaceContact(ref NativeManifold res, FaceQueryResult input,
-            RigidTransform t1, NativeHull h1, RigidTransform t2, NativeHull h2)
+            RigidTransform t1, NativeHull h1, RigidTransform t2, NativeHull h2, bool flipNormal)
         {
             //h1在h2中最大深度面
             var refPlane = h1.GetPlane(input.FaceIndex);
@@ -335,7 +335,114 @@ namespace UnityNativeHull
             var clippingPlanes = new NativeBuffer<ClipPlane>(clippingPlaneStackPtr,h1.FaceCount);
             
             // 获取参考面的侧边平面，这些平面用于裁剪入射面多边形
-            //GetFaceSidePlanes(ref clippingPlanes, referencePlane, input.FaceIndex, t1, h1);
+            GetFaceSidePlanes(ref clippingPlanes, referencePlane, input.FaceIndex, t1, h1);
+            
+            // 在栈上分配一个缓冲区，用来存储入射多边形顶点，大小为 hull1 的顶点数
+            var incidentPolygonStackPtr = stackalloc ClipVertex[h1.FaceCount];
+            var incidentPolygon = new NativeBuffer<ClipVertex>(incidentPolygonStackPtr, h1.VertexCount);
+
+            // 计算入射面索引（即与参考面法线最不平行的 hull2 的面）
+            var incidentFaceIndex = ComputeIncidentFaceIndex(referencePlane, h2, t2);
+            // 计算入射面多边形的顶点（裁剪多边形的初始顶点）
+            ComputeFaceClippingPolygon(ref incidentPolygon, incidentFaceIndex, t2, h2);
+
+            // 以下是用于多边形裁剪的临时输出缓冲区，大小同样为 hull1.FaceCount
+            var outputPolygonStackPtr = stackalloc ClipVertex[h1.FaceCount];
+
+            // 使用参考面的侧边平面逐个裁剪入射多边形
+            for (int i = 0; i < clippingPlanes.Length; ++i)
+            {
+                // 每次裁剪产生新的输出多边形缓冲区
+                var outputPolygon = new NativeBuffer<ClipVertex>(outputPolygonStackPtr, h1.FaceCount);
+
+                // 将入射多边形按当前裁剪平面裁剪，结果存到 outputPolygon
+                Clip(clippingPlanes[i], ref incidentPolygon, ref outputPolygon);
+
+                // 如果裁剪后多边形顶点数为0，说明无交集，提前返回
+                if (outputPolygon.Length == 0)
+                {
+                    return;
+                }
+                
+                // 准备下一次裁剪，incidentPolygon 指向最新的裁剪结果
+                incidentPolygon = outputPolygon;
+            }
+
+            // 遍历裁剪后的入射多边形顶点，生成接触点
+            for (int i = 0; i < incidentPolygon.Length; ++i)
+            {
+                ClipVertex vertex = incidentPolygon[i];
+                // 计算顶点到参考平面的距离
+                float distance = referencePlane.Distance(vertex.position);
+
+                // 如果顶点在参考平面下方（或在平面上），则为有效接触点
+                if (distance <= 0)
+                {
+                    ContactID id = default;
+                    id.FeaturePair = vertex.featurePair; // 保存特征对信息（边/顶点标识）
+
+                    if (flipNormal)
+                    {
+                        // 如果需要翻转法线，法线取反
+                        res.Normal = -referencePlane.Normal;
+                        // 同时交换特征对中边的索引，保持一致性
+                        Swap(id.FeaturePair.InEdge1, id.FeaturePair.InEdge2);
+                        Swap(id.FeaturePair.OutEdge1, id.FeaturePair.OutEdge2);
+                    }
+                    else
+                    {
+                        // 否则法线保持参考平面法线方向
+                        res.Normal = referencePlane.Normal;                        
+                    }
+                    
+                    // 将顶点投影到参考平面上，作为接触点位置
+                    float3 position = referencePlane.ClosestPoint(vertex.position);
+
+                    // 将接触点位置、距离和特征对添加到碰撞接触点列表中
+                    res.Add(position, distance, id);
+                }
+            }
+
+            // 注意：clippingPlanes 和 incidentPolygon 都是栈上分配，没调用 Dispose
+            // 若使用 NativeList，需显式 Dispose 释放托管内存
+        }
+        /// <summary>
+        /// 为指定面生成其所有边对应的裁剪平面（side planes），并写入到输出列表中。
+        /// </summary>
+        public static unsafe void GetFaceSidePlanes(ref NativeBuffer<ClipPlane> output, NativePlane facePlane, int faceIndex, RigidTransform transform, NativeHull hull)
+        { 
+            // 获取该面起始边（HalfEdge结构）
+            NativeHalfEdge* start = hull.GetHalfEdgePtr(hull.GetFaces(faceIndex)->Edge);
+            NativeHalfEdge* current = start;
+
+            do
+            {
+                // 获取当前边的“对边”（另一面共享的边）
+                NativeHalfEdge* twin = hull.GetHalfEdgePtr(current->Twin);
+
+                // 取当前边的两个端点（并转换到目标空间）
+                float3 P = math.transform(transform, hull.GetVertex(current->Origin));
+                float3 Q = math.transform(transform, hull.GetVertex(twin->Origin));
+
+                // 构造裁剪平面（边 × 面法线 = 垂直于边并指向外侧的平面）
+                ClipPlane clipPlane = default;
+                clipPlane.edgeId = twin->Twin; // 记录边的 ID
+                clipPlane.plane.Normal = math.normalize(math.cross(Q - P, facePlane.Normal)); // 侧平面法线
+                clipPlane.plane.Offset = math.dot(clipPlane.plane.Normal, P); // 侧平面偏移量（点法式）
+
+                // 添加裁剪平面到输出列表中
+                output.Add(clipPlane);
+
+                // 移动到下一个边
+                current = hull.GetHalfEdgePtr(current->Next);
+            }
+            while (current != start); // 遍历完整个环（一个面是一圈连通边）
+        }
+        private static void Swap<T>(T a, T b)
+        {
+            T tmp = a;
+            a = b;
+            b = tmp;
         }
 
         private static unsafe void CreateEdgeContact(ref NativeManifold res, EdgeQueryResult input,

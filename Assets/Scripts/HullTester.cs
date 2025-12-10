@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using Common;
 using Unity.Collections;
 using Unity.Mathematics;
 using UnityEngine;
@@ -130,6 +131,12 @@ public class HullTester : MonoBehaviour
                 {
                     Debug.Log($"'{a.name}'与'{b.name}'的接触计算耗时: {sw1.Elapsed.TotalMilliseconds:N4}ms (普通), {sw2.Elapsed.TotalMilliseconds:N4}ms (Burst)");
                 }
+            }
+            // 绘制碰撞状态
+            if (DrawIsCollided)
+            {
+                DebugDrawer.DrawSphere(t1.pos, 0.1f, UnityColors.GhostDodgerBlue);
+                DebugDrawer.DrawSphere(t2.pos, 0.1f, UnityColors.GhostDodgerBlue);
             }
         }
     }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Common;
 using Unity.Mathematics;
 using UnityEngine;
@@ -77,6 +78,34 @@ namespace UnityNativeHull
                     
                 }
             }
+        }
+        // 调试绘制一个碰撞接触点集，方便看哪里碰撞相交了
+        public static void DebugDrawManifold(NativeManifold manifold, Color color = default)
+        {
+            // 如果碰撞接触点集没有创建或者长度为0，直接返回，不绘制
+            if (!manifold.IsCreated || manifold.Length == 0)
+                return;
+
+            // 如果没有传入颜色参数，则默认使用蓝色，并且设置透明度为0.3
+            if (color == default)
+                color = UnityColors.Blue.ToOpacity(0.3f);
+
+            // 遍历每一个接触点
+            for (int i = 0; i < manifold.Length; i++)
+            {
+                var start = manifold[i];// 当前接触点
+                if (manifold.Length >= 2)
+                {
+                    // 如果有两个及以上点，绘制线段
+                    // end点为前一个接触点，i==0时，连接最后一个点形成闭环
+                    var end = i > 0 ? manifold[i - 1] : manifold[manifold.Length - 1];
+                    Debug.DrawLine(start.Position, end.Position, color);                    
+                }
+                // 以球体的形式绘制当前接触点，半径0.02，颜色透明度0.8
+                DebugDrawer.DrawSphere(start.Position, 0.02f, color.ToOpacity(0.8f));
+            }
+            // 将所有接触点的位置提取成Vector3数组，绘制凸多边形的轮廓，颜色为前面定义的color
+            DebugDrawer.DrawAAConvexPolygon(manifold.ToArray().Select(cp => (Vector3)cp.Position).ToArray(), color);
         }
     }
 }

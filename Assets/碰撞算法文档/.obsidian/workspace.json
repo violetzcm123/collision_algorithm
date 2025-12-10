@@ -245,6 +245,7 @@
   "active": "f8a132b498780952",
   "lastOpenFiles": [
     "HullCollision.md",
+    "HullIntersection.md",
     "HullTester.md",
     "NativeManifold.md",
     "NativeManifold.md.meta",
@@ -260,7 +261,6 @@
     "NativeHull.md.meta",
     "HullIntersection.md.meta",
     "HullOperations.md",
-    "HullIntersection.md",
     "HullFactory.md",
     "HullTester.md~"
   ]

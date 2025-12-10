@@ -212,3 +212,30 @@ click K "#DebugDrawManifold" "跳转到 DebugDrawManifold"
 - 绘制投影到参考面的点与原始世界点，便于定位坐标系错误；
     
 - 在复杂场景中提供开关（只在选中物体时绘制或限制数量）。
+---
+### NativeHullHullContact
+**作用**
+- 用于得到碰撞具体信息
+**流程**
+```mermaid
+flowchart TD
+    A[开始: NativeHullHullContact] --> B[QueryFaceDistance: hull1 on hull2]
+    B --> C{faceQuery1.Distance > 0?}
+    C -- 是 --> D[返回 false\n无碰撞]
+    C -- 否 --> E[QueryFaceDistance: hull2 on hull1]
+    E --> F{faceQuery2.Distance > 0?}
+    F -- 是 --> D
+    F -- 否 --> G[QueryEdgeDistance: edge vs edge]
+    G --> H{edgeQuery.Distance > 0?}
+    H -- 是 --> D
+    H -- 否 --> I[设置容差参数:\nkRelEdgeTolerance=0.90\nkRelFaceTolerance=0.95\nkAbsTolerance=0.0025]
+    I --> J["maxFaceSeparation = max(face1, face2)"]
+    J --> K{edgeQuery.Distance >\nkRelEdgeTolerance * maxFaceSeparation + kAbsTolerance?}
+    K -- 是 --> L[CreateEdgeContact]
+    K -- 否 --> M{faceQuery2.Distance >\nkRelFaceTolerance * faceQuery1.Distance + kAbsTolerance?}
+    M -- 是 --> N[CreateFaceContact\nhull2 为参考面\nflip=true]
+    M -- 否 --> O[CreateFaceContact\nhull1 为参考面\nflip=false]
+    L --> P[返回 true\n有碰撞]
+    N --> P
+    O --> P
+```
